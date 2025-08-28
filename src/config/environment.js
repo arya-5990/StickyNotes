@@ -21,7 +21,7 @@ const config = {
 
   // Mock Data Configuration (disabled for Firebase)
   mock: {
-    enabled: false, // Disabled to use Firebase
+    enabled: process.env.REACT_APP_MOCK_ENABLED === 'true' || false, // Default to false for Firebase
     delayMs: parseInt(process.env.REACT_APP_MOCK_DELAY_MS) || 500,
   },
 

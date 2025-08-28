@@ -3,6 +3,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import Login from './components/Login';
 import JoinSpace from './components/JoinSpace';
 import Space from './components/Space';
+import ErrorBoundary from './components/ErrorBoundary';
 import { validateConfig, logConfig } from './config/environment';
 import './App.css';
 
@@ -37,9 +38,11 @@ const AppContent = () => {
 
 function App() {
   return (
-    <AppProvider>
-      <AppContent />
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <AppContent />
+      </AppProvider>
+    </ErrorBoundary>
   );
 }
 

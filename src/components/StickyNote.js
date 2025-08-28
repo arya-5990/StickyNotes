@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { updateNote, removeNote } from '../services/firebaseService';
 import config from '../config/environment';
@@ -9,8 +9,20 @@ const StickyNote = ({ note, userId, isOwnNote }) => {
   const [editTitle, setEditTitle] = useState(note.title);
   const [editContent, setEditContent] = useState(note.content);
   const [isDragging, setIsDragging] = useState(false);
+  const [isSavingPosition, setIsSavingPosition] = useState(false);
   const noteRef = useRef(null);
   const dragStartPos = useRef({ x: 0, y: 0 });
+  const lastSavedPosition = useRef(note.position);
+  const saveTimeoutRef = useRef(null);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleMouseDown = (e) => {
     if (!isOwnNote) return;
@@ -31,16 +43,94 @@ const StickyNote = ({ note, userId, isOwnNote }) => {
     const newX = e.clientX - dragStartPos.current.x;
     const newY = e.clientY - dragStartPos.current.y;
     
-    // Update note position in real-time
-    actions.updateNote(userId, note.id, {
-      position: { x: newX, y: newY }
-    });
+    // Get container bounds
+    const container = noteRef.current?.parentElement;
+    if (container) {
+      const containerRect = container.getBoundingClientRect();
+      const noteWidth = 256; // w-64
+      const noteHeight = 200; // Approximate height
+      
+      // Constrain position within container bounds
+      const constrainedX = Math.max(0, Math.min(newX, containerRect.width - noteWidth));
+      const constrainedY = Math.max(0, Math.min(newY, containerRect.height - noteHeight));
+      
+      const newPosition = { x: constrainedX, y: constrainedY };
+      
+      // Update note position in real-time for visual feedback
+      actions.updateNote(userId, note.id, {
+        position: newPosition
+      });
+      
+      // Debounced save during dragging (only for own notes)
+      if (isOwnNote) {
+        // Clear existing timeout
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+        
+        // Set new timeout to save position
+        saveTimeoutRef.current = setTimeout(async () => {
+          const lastPosition = lastSavedPosition.current;
+          if (newPosition.x !== lastPosition.x || newPosition.y !== lastPosition.y) {
+            setIsSavingPosition(true);
+            try {
+              await updateNote(note.id, {
+                position: newPosition
+              });
+              lastSavedPosition.current = newPosition;
+              console.log('Note position saved during drag:', newPosition);
+            } catch (error) {
+              console.error('Failed to save note position during drag:', error);
+            } finally {
+              setIsSavingPosition(false);
+            }
+          }
+        }, 500); // Save after 500ms of no movement
+      }
+    } else {
+      // Fallback if container not found
+      actions.updateNote(userId, note.id, {
+        position: { x: newX, y: newY }
+      });
+    }
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = async () => {
     setIsDragging(false);
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp);
+    
+    // Clear any pending save timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    
+    // Save the final position to Firebase
+    if (isOwnNote && note.position) {
+      const currentPosition = note.position;
+      const lastPosition = lastSavedPosition.current;
+      
+      // Only save if position actually changed
+      if (currentPosition.x !== lastPosition.x || currentPosition.y !== lastPosition.y) {
+        setIsSavingPosition(true);
+        try {
+          await updateNote(note.id, {
+            position: currentPosition
+          });
+          lastSavedPosition.current = currentPosition;
+          console.log('Note position saved:', currentPosition);
+        } catch (error) {
+          console.error('Failed to save note position:', error);
+          // Revert to last saved position on error
+          actions.updateNote(userId, note.id, {
+            position: lastPosition
+          });
+        } finally {
+          setIsSavingPosition(false);
+        }
+      }
+    }
   };
 
   const handleSave = async () => {
@@ -81,10 +171,11 @@ const StickyNote = ({ note, userId, isOwnNote }) => {
 
   return (
     <div
+      id={`note-${note.id}`}
       ref={noteRef}
       className={`absolute w-64 p-4 rounded-lg shadow-lg border-2 cursor-move transition-all duration-200 ${
         isDragging ? 'scale-105 shadow-2xl z-50' : 'hover:scale-102'
-      } ${colorClass}`}
+      } ${isSavingPosition ? 'ring-2 ring-blue-500' : ''} ${colorClass}`}
       style={{
         left: note.position.x,
         top: note.position.y,
@@ -152,14 +243,25 @@ const StickyNote = ({ note, userId, isOwnNote }) => {
               </div>
             )}
           </div>
-          <div className="text-gray-700 whitespace-pre-wrap break-words">
-            {note.content}
-          </div>
-          {!isOwnNote && (
-            <div className="mt-2 text-xs text-gray-500">
-              Click and drag to move (if you own this note)
-            </div>
-          )}
+                     <div className="text-gray-700 whitespace-pre-wrap break-words">
+             {note.content}
+           </div>
+           <div className="mt-2 flex items-center justify-between">
+             {isSavingPosition && (
+               <div className="flex items-center space-x-1 text-xs text-blue-600">
+                 <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                 </svg>
+                 <span>Saving position...</span>
+               </div>
+             )}
+             {!isOwnNote && (
+               <div className="text-xs text-gray-500">
+                 Click and drag to move (if you own this note)
+               </div>
+             )}
+           </div>
         </div>
       )}
     </div>

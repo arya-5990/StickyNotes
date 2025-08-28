@@ -108,34 +108,53 @@ export const AppProvider = ({ children }) => {
   // Firebase authentication listener
   useEffect(() => {
     const unsubscribe = onAuthStateChange((user) => {
+      console.log('Auth state changed:', user ? 'User authenticated' : 'User signed out');
       dispatch({ type: ACTIONS.SET_USER, payload: user });
     });
 
     return () => unsubscribe();
   }, []);
 
-  // Cleanup space subscription when changing spaces
+  // Cleanup space subscription when changing spaces or user authentication changes
   useEffect(() => {
+    // Clean up existing subscription
     if (state.unsubscribe) {
       state.unsubscribe();
+      dispatch({ type: ACTIONS.SET_UNSUBSCRIBE, payload: null });
     }
 
-    if (state.currentSpace) {
-      const unsubscribe = subscribeToSpace(state.currentSpace, (spaceData) => {
-        dispatch({ type: ACTIONS.SET_SPACE_DATA, payload: spaceData });
-      });
+    // Only subscribe to space if user is authenticated and has a current space
+    if (state.user && state.currentSpace) {
+      console.log('Setting up space subscription for:', state.currentSpace);
       
-      dispatch({ type: ACTIONS.SET_UNSUBSCRIBE, payload: unsubscribe });
+      try {
+        const unsubscribe = subscribeToSpace(state.currentSpace, (spaceData) => {
+          console.log('Space data updated:', spaceData);
+          dispatch({ type: ACTIONS.SET_SPACE_DATA, payload: spaceData });
+        });
+        
+        dispatch({ type: ACTIONS.SET_UNSUBSCRIBE, payload: unsubscribe });
+      } catch (error) {
+        console.error('Error setting up space subscription:', error);
+        dispatch({ type: ACTIONS.SET_ERROR, payload: error.message });
+      }
+    } else if (state.currentSpace && !state.user) {
+      console.log('User not authenticated, cannot subscribe to space');
+      dispatch({ type: ACTIONS.SET_ERROR, payload: 'Please sign in to access the space' });
     }
-  }, [state.currentSpace]);
+  }, [state.currentSpace, state.user]);
 
   // Actions
   const actions = {
-    setCurrentSpace: (spaceId) => dispatch({ type: ACTIONS.SET_CURRENT_SPACE, payload: spaceId }),
+    setCurrentSpace: (spaceId) => {
+      console.log('Setting current space to:', spaceId);
+      dispatch({ type: ACTIONS.SET_CURRENT_SPACE, payload: spaceId });
+    },
     setSpaceData: (data) => dispatch({ type: ACTIONS.SET_SPACE_DATA, payload: data }),
     setLoading: (loading) => dispatch({ type: ACTIONS.SET_LOADING, payload: loading }),
     setError: (error) => dispatch({ type: ACTIONS.SET_ERROR, payload: error }),
     addNote: (userId, note) => dispatch({ type: ACTIONS.ADD_NOTE, payload: { userId, note } }),
+    addNoteOptimistic: (userId, note) => dispatch({ type: ACTIONS.ADD_NOTE, payload: { userId, note } }),
     removeNote: (userId, noteId) => dispatch({ type: ACTIONS.REMOVE_NOTE, payload: { userId, noteId } }),
     updateNote: (userId, noteId, updates) => dispatch({ type: ACTIONS.UPDATE_NOTE, payload: { userId, noteId, updates } })
   };
