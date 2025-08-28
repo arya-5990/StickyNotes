@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom fonts for sticky notes */
+@import url('https://fonts.googleapis.com/css2?family=Indie+Flower&family=Architects+Daughter&family=Kalam&family=Patrick+Hand&display=swap');
+
+@layer utilities {
+  .font-handwriting {
+    font-family: 'Indie Flower', cursive;
+  }
+  
+  .font-cursive {
+    font-family: 'Architects Daughter', cursive;
+  }
+  
+  .font-typewriter {
+    font-family: 'Courier New', monospace;
+  }
+  
+  .font-note {
+    font-family: 'Kalam', cursive;
+  }
+  
+  .font-script {
+    font-family: 'Patrick Hand', cursive;
+  }
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
